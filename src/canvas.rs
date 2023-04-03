@@ -72,17 +72,56 @@ impl Canvas {
     }
 
     pub fn fill_circle(&mut self, cx: i32, cy: i32, r: u32, color: u32) {
-        let r2 = (r * r) as i32;
+        let _r2 = (r * r) as i32;
         let x_range = (cx - r as i32).max(0)..(cx + r as i32).min(self.width as i32);
         let y_range = (cy - r as i32).max(0)..(cy + r as i32).min(self.height as i32);
         for x in x_range {
             for y in y_range.clone() {
-                if (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r2 {
+                if (x - cx) * (x - cx) + (y - cy) * (y - cy) <= _r2 {
                     self.get_pixel_mut(x, y).and_then(|pixel| {
                         *pixel = color.into();
                         Some(())
                     });
                 }
+            }
+        }
+    }
+
+    pub fn draw_line(&mut self, x1: i32, y1: i32, x2: i32, y2:i32, color: u32) {
+        // y = kx + b
+        // y1 = k*x1 + b
+        // y2 = k*x2 + b
+        // k = (y2 - y1) / (x2 - x1)
+        let dx = x2 - x1;
+        let dy = y2 - y1;
+        if dx == 0 {
+            if x1 < 0 || x1 >= self.width as i32 {
+                return;
+            }
+            // make sure y1 < y2
+            let (mut y1, mut y2) = if y1 < y2 { (y1, y2) } else { (y2, y1) };
+            y1 = y1.max(0);
+            y2 = y2.min(self.height as i32);
+            for y in y1..y2 {
+                self.get_pixel_mut(x1, y).and_then(|pixel| {
+                    *pixel = color.into();
+                    Some(())
+                });
+            }
+            return;
+        }
+        let k = dy as f32 / dx as f32;
+        let b = y1 as f32 - k * x1 as f32;
+        for x in x1..x2 {
+            let y = (k * x as f32 + b) as i32;
+            let next_y = (k * (x + 1) as f32 + b) as i32;
+            // make sure y < next_y
+            let (y, next_y) = if y < next_y { (y, next_y) } else { (next_y, y) };
+            for cy in y..next_y {
+            self.get_pixel_mut(x, cy).and_then(|pixel| {
+                *pixel = color.into();
+                Some(())
+            });
             }
         }
     }
