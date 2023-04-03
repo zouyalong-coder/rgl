@@ -7,6 +7,23 @@ pub struct Pixel {
     pub alpha: u8,
 }
 
+impl Pixel {
+    fn blend_channel(val_1: u8, val_2: u8, alpha: u8) -> u8 {
+        let val_1 = val_1 as u32;
+        let val_2 = val_2 as u32;
+        let alpha = alpha as u32;
+        let val = (val_1 * (255 - alpha) + val_2 * alpha) / 255;
+        val.max(255) as u8
+    }
+
+    pub fn blend(&mut self, other: &Pixel) {
+        // self.red = Self::blend_channel(self.red, other.red, other.alpha);
+        // self.green = Self::blend_channel(self.green, other.green, other.alpha);
+        // self.blue = Self::blend_channel(self.blue, other.blue, other.alpha);
+        *self = *other;
+    }
+}
+
 impl Into<u32> for Pixel {
     fn into(self) -> u32 {
         ((self.alpha as u32) << 24)
@@ -64,7 +81,7 @@ impl Canvas {
         for x in x_range {
             for y in y_range.clone() {
                 self.get_pixel_mut(x, y).and_then(|pixel| {
-                    *pixel = color.into();
+                    pixel.blend(&color.into());
                     Some(())
                 });
             }
@@ -79,12 +96,43 @@ impl Canvas {
             for y in y_range.clone() {
                 if (x - cx) * (x - cx) + (y - cy) * (y - cy) <= _r2 {
                     self.get_pixel_mut(x, y).and_then(|pixel| {
-                        *pixel = color.into();
+                        pixel.blend(&color.into());
                         Some(())
                     });
                 }
             }
         }
+    }
+
+    /// 向量叉乘方式计算2倍面积。
+    fn double_trangle_area(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32) -> i32 {
+        ((x1 - x3) * (y2 - y3) - (x2 - x3) * (y1 - y3)).abs()
+    }
+
+    pub fn fill_triangle(&mut self, x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32, color: u32) {
+        let lx = x1.min(x2).min(x3).max(0);
+        let rx = x1.max(x2).max(x3).min(self.width as i32);
+        let ly = y1.min(y2).min(y3).max(0);
+        let hy = y1.max(y2).max(y3).min(self.height as i32);
+        // 判断原理：点P与三角形ABC的三个顶点构成的三角形的面积S1、S2、S3，如果S1 + S2 + S3 = S，则P在三角形内部。
+        // 面积计算方法：
+        // 1. 海龙公式：s = (a + b + c) / 2 = √(s(s-a)(s-b)(s-c))
+        // 2. 向量叉乘：S = |(x1-x0)(y2-y0) - (x2-x0)(y1-y0)| / 2
+        let s = Self::double_trangle_area(x1, y1, x2, y2, x3, y3);
+        for y in ly..hy {
+            for x in lx..rx {
+                let s1 = Self::double_trangle_area(x, y, x2, y2, x3, y3);
+                let s2 = Self::double_trangle_area(x1, y1, x, y, x3, y3);
+                let s3 = Self::double_trangle_area(x1, y1, x2, y2, x, y);
+                if s1 + s2 + s3 == s {
+                    self.get_pixel_mut(x, y).and_then(|pixel| {
+                        pixel.blend(&color.into());
+                        Some(())
+                    });
+                }
+            }
+        }
+
     }
 
     pub fn draw_line(&mut self, x1: i32, y1: i32, x2: i32, y2:i32, color: u32) {
@@ -119,10 +167,23 @@ impl Canvas {
             let (y, next_y) = if y < next_y { (y, next_y) } else { (next_y, y) };
             for cy in y..next_y {
             self.get_pixel_mut(x, cy).and_then(|pixel| {
-                *pixel = color.into();
+                pixel.blend(&color.into());
                 Some(())
             });
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Canvas;
+
+
+    #[test]
+    fn area_test() {
+        let a = Canvas::double_trangle_area(0, 0, 1, 0, 0, 1);
+        assert_eq!(a, 1);
+        assert_eq!(Canvas::double_trangle_area(0, 0, 0, 1, 1, 0), 1);
     }
 }
