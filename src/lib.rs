@@ -1,5 +1,5 @@
 pub mod canvas;
-pub mod ppm;
+pub mod surface;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right

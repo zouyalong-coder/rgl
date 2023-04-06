@@ -13,14 +13,15 @@ impl Pixel {
         let val_2 = val_2 as u32;
         let alpha = alpha as u32;
         let val = (val_1 * (255 - alpha) + val_2 * alpha) / 255;
-        val.max(255) as u8
+        val.min(255) as u8
     }
 
     pub fn blend(&mut self, other: &Pixel) {
-        // self.red = Self::blend_channel(self.red, other.red, other.alpha);
-        // self.green = Self::blend_channel(self.green, other.green, other.alpha);
-        // self.blue = Self::blend_channel(self.blue, other.blue, other.alpha);
-        *self = *other;
+        self.red = Self::blend_channel(self.red, other.red, other.alpha);
+        self.green = Self::blend_channel(self.green, other.green, other.alpha);
+        self.blue = Self::blend_channel(self.blue, other.blue, other.alpha);
+        self.alpha = ((self.alpha as u16) * (255 - other.alpha as u16) + other.alpha as u16) as u8;
+        // *self = *other;
     }
 }
 
