@@ -21,7 +21,6 @@ impl Pixel {
         self.green = Self::blend_channel(self.green, other.green, other.alpha);
         self.blue = Self::blend_channel(self.blue, other.blue, other.alpha);
         self.alpha = ((self.alpha as u16) * (255 - other.alpha as u16) + other.alpha as u16) as u8;
-        // *self = *other;
     }
 }
 
@@ -48,6 +47,7 @@ impl From<u32> for Pixel {
 pub struct Canvas {
     pub width: usize,
     pub height: usize,
+    pub stride: usize,
     pub pixels: Vec<Pixel>,
 }
 
@@ -56,6 +56,7 @@ impl Canvas {
         Canvas {
             width,
             height,
+            stride: width,
             pixels: vec![0u32.into(); width * height],
         }
     }
@@ -65,7 +66,7 @@ impl Canvas {
         if x < 0 || y < 0 || x as usize >= self.width || y as usize >= self.height {
             return None;
         }
-        Some(&self.pixels[y as usize * self.width + x as usize])
+        Some(&self.pixels[y as usize * self.stride + x as usize])
     }
 
     #[inline]
@@ -73,7 +74,7 @@ impl Canvas {
         if x < 0 || y < 0 || x as usize >= self.width || y as usize >= self.height {
             return None;
         }
-        Some(&mut self.pixels[y as usize * self.width + x as usize])
+        Some(&mut self.pixels[y as usize * self.stride + x as usize])
     }
 
     pub fn fill_rect(&mut self, x: i32, y: i32, width: usize, height: usize, color: u32) {
@@ -137,10 +138,6 @@ impl Canvas {
     }
 
     pub fn draw_line(&mut self, x1: i32, y1: i32, x2: i32, y2:i32, color: u32) {
-        // y = kx + b
-        // y1 = k*x1 + b
-        // y2 = k*x2 + b
-        // k = (y2 - y1) / (x2 - x1)
         let dx = x2 - x1;
         let dy = y2 - y1;
         if dx == 0 {
