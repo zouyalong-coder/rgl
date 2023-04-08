@@ -1,3 +1,5 @@
+use std::{sync::{Mutex, Arc}};
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct Pixel {
@@ -45,45 +47,84 @@ impl From<u32> for Pixel {
 }
 
 pub struct Canvas {
+    offset: usize,
     pub width: usize,
     pub height: usize,
     pub stride: usize,
-    pub pixels: Vec<Pixel>,
+    pub pixels: Arc<Mutex<Vec<Pixel>>>,
 }
 
 impl Canvas {
     pub fn new(width: usize, height: usize) -> Canvas {
         Canvas {
+            offset: 0,
             width,
             height,
             stride: width,
-            pixels: vec![0u32.into(); width * height],
+            pixels: Arc::new(Mutex::new(vec![0u32.into(); width * height])),
         }
     }
 
-    #[inline]
-    fn get_pixel(&self, x: i32, y: i32) -> Option<&Pixel> {
-        if x < 0 || y < 0 || x as usize >= self.width || y as usize >= self.height {
+    pub fn sub_canvas(&self, x: i32, y: i32, width: u32, height: u32) -> Option<Canvas> {
+        let rx = (x + width as i32).min(self.width as i32);
+        let lh = (y + height as i32).min(self.height as i32);
+        if rx < 0 || lh < 0 || x >= self.width as i32 || y >= self.height as i32 {
             return None;
         }
-        Some(&self.pixels[y as usize * self.stride + x as usize])
+        let x = x.max(0) as usize;
+        let y = y.max(0) as usize;
+        let width = (rx - x as i32).max(0) as usize;
+        let height = (lh - y as i32).max(0) as usize;
+        if width == 0 || height == 0 {
+            return None;
+        }
+        Some(Canvas {
+            offset: Self::cal_offset(x, y, self.stride),
+            width,
+            height,
+            stride: self.stride,
+            pixels: self.pixels.clone(),
+        })
+    }
+
+    pub fn clone_pixels(&self) -> Vec<Pixel> {
+        (&self.pixels.lock().unwrap()[self.offset..]).to_vec()
     }
 
     #[inline]
-    fn get_pixel_mut(&mut self, x: i32, y: i32) -> Option<&mut Pixel> {
+    fn cal_offset(x: usize, y: usize, stride: usize) -> usize {
+        y * stride + x
+    }
+
+    #[inline]
+    fn resolve_offset(&self, x: i32, y: i32) -> Option<usize> {
         if x < 0 || y < 0 || x as usize >= self.width || y as usize >= self.height {
             return None;
+        } 
+        Some(self.offset + Self::cal_offset(x as usize, y as usize, self.stride))
+    }
+
+    pub fn fill(&mut self, bg: u32) {
+        let bg: Pixel = bg.into();
+        let mut pixels = self.pixels.lock().unwrap();
+        for x in 0..self.width {
+            for y in 0..self.height {
+                self.resolve_offset(x as i32, y as i32).and_then(|offset| {
+                    pixels[offset].blend(&bg);
+                    Some(())
+                });
+            }
         }
-        Some(&mut self.pixels[y as usize * self.stride + x as usize])
     }
 
     pub fn fill_rect(&mut self, x: i32, y: i32, width: usize, height: usize, color: u32) {
         let x_range = x.max(0)..(x + width as i32).min(self.width as i32);
         let y_range = y.max(0)..(y + height as i32).min(self.height as i32);
+        let mut pixels = self.pixels.lock().unwrap();
         for x in x_range {
             for y in y_range.clone() {
-                self.get_pixel_mut(x, y).and_then(|pixel| {
-                    pixel.blend(&color.into());
+                self.resolve_offset(x, y).and_then(|offset| {
+                    pixels[offset].blend(&color.into());
                     Some(())
                 });
             }
@@ -94,11 +135,12 @@ impl Canvas {
         let _r2 = (r * r) as i32;
         let x_range = (cx - r as i32).max(0)..(cx + r as i32).min(self.width as i32);
         let y_range = (cy - r as i32).max(0)..(cy + r as i32).min(self.height as i32);
+        let mut pixels = self.pixels.lock().unwrap();
         for x in x_range {
             for y in y_range.clone() {
                 if (x - cx) * (x - cx) + (y - cy) * (y - cy) <= _r2 {
-                    self.get_pixel_mut(x, y).and_then(|pixel| {
-                        pixel.blend(&color.into());
+                    self.resolve_offset(x, y).and_then(|offset| {
+                        pixels[offset].blend(&color.into());
                         Some(())
                     });
                 }
@@ -121,14 +163,15 @@ impl Canvas {
         // 1. 海龙公式：s = (a + b + c) / 2 = √(s(s-a)(s-b)(s-c))
         // 2. 向量叉乘：S = |(x1-x0)(y2-y0) - (x2-x0)(y1-y0)| / 2
         let s = Self::double_trangle_area(x1, y1, x2, y2, x3, y3);
+        let mut pixels = self.pixels.lock().unwrap();
         for y in ly..hy {
             for x in lx..rx {
                 let s1 = Self::double_trangle_area(x, y, x2, y2, x3, y3);
                 let s2 = Self::double_trangle_area(x1, y1, x, y, x3, y3);
                 let s3 = Self::double_trangle_area(x1, y1, x2, y2, x, y);
                 if s1 + s2 + s3 == s {
-                    self.get_pixel_mut(x, y).and_then(|pixel| {
-                        pixel.blend(&color.into());
+                    self.resolve_offset(x, y).and_then(|offset| {
+                        pixels[offset].blend(&color.into());
                         Some(())
                     });
                 }
@@ -148,9 +191,10 @@ impl Canvas {
             let (mut y1, mut y2) = if y1 < y2 { (y1, y2) } else { (y2, y1) };
             y1 = y1.max(0);
             y2 = y2.min(self.height as i32);
+            let mut pixels = self.pixels.lock().unwrap();
             for y in y1..y2 {
-                self.get_pixel_mut(x1, y).and_then(|pixel| {
-                    *pixel = color.into();
+                self.resolve_offset(x1, y).and_then(|offset| {
+                    pixels[offset].blend(&color.into());
                     Some(())
                 });
             }
@@ -163,11 +207,12 @@ impl Canvas {
             let next_y = (k * (x + 1) as f32 + b) as i32;
             // make sure y < next_y
             let (y, next_y) = if y < next_y { (y, next_y) } else { (next_y, y) };
+            let mut pixels = self.pixels.lock().unwrap();
             for cy in y..next_y {
-            self.get_pixel_mut(x, cy).and_then(|pixel| {
-                pixel.blend(&color.into());
-                Some(())
-            });
+                self.resolve_offset(x, cy).and_then(|offset| {
+                    pixels[offset].blend(&color.into());
+                    Some(())
+                });
             }
         }
     }

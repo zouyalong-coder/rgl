@@ -38,7 +38,7 @@ impl From<canvas::Canvas> for PPM {
             width: canvas.width,
             height: canvas.height,
             max_color: 255,
-            pixels: canvas.pixels,
+            pixels: canvas.clone_pixels(),
         }
     }
 }

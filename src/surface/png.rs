@@ -34,7 +34,7 @@ impl From<Canvas> for Png {
         Self { 
             width: value.width as u32,
             height: value.height as u32, 
-            pixels: value.pixels, 
+            pixels: value.clone_pixels(), 
         }
     }
 }
