@@ -131,19 +131,40 @@ impl Canvas {
         }
     }
 
+
+
     pub fn fill_circle(&mut self, cx: i32, cy: i32, r: u32, color: u32) {
         let _r2 = (r * r) as i32;
         let x_range = (cx - r as i32).max(0)..(cx + r as i32).min(self.width as i32);
         let y_range = (cy - r as i32).max(0)..(cy + r as i32).min(self.height as i32);
         let mut pixels = self.pixels.lock().unwrap();
+        const AA_RES: u32 = 2;
+        const AA_PAD: f32 = 1f32 / (AA_RES + 1) as f32;
         for x in x_range {
             for y in y_range.clone() {
-                if (x - cx) * (x - cx) + (y - cy) * (y - cy) <= _r2 {
+                if (x - cx) * (x - cx) + (y - cy) * (y - cy) > _r2 {
+                    continue;
+                }
+                let mut count = 0;
+                for sox in 0..AA_RES {
+                    for soy in 0..AA_RES {
+                        let sx = x as f32 + AA_PAD * (sox as f32 + 1f32);
+                        let sy = y as f32 + AA_PAD * (soy as f32 + 1f32);
+                        let dx = sx - cx as f32 - 0.5;
+                        let dy = sy - cy as f32 - 0.5;
+                        if dx * dx + dy * dy <= _r2 as f32 {
+                            count += 1;
+                        }
+                    }
+                }
+                let alpha = count as f32 / (AA_RES * AA_RES) as f32 * 255f32;
+                let alpha = alpha as u8;
+                let mut color: Pixel = color.into();
+                color.alpha = alpha;
                     self.resolve_offset(x, y).and_then(|offset| {
-                        pixels[offset].blend(&color.into());
+                        pixels[offset].blend(&color);
                         Some(())
                     });
-                }
             }
         }
     }
